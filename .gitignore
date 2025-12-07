@@ -27,6 +27,8 @@ out/
 
 logs/
 
+pkl_test/
+
 
 
 # 忽略 IDE 配置
