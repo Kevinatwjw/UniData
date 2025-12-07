@@ -186,4 +186,16 @@ To avoid duplicating large amounts of data and consuming space, create a symboli
         └── ...
     ```
 
+### Step 10: Download Pre-trained Weights
+
+We need to download the **CenterPoint Voxel 0.075 + DCN** version (mAP 56.92 / NDS 65.27), which is the strongest official model provided. You can download it using the instructions below (ensure you are in the project root directory), or download it manually from the [CenterPoint Model Zoo](https://github.com/open-mmlab/mmdetection3d/blob/main/configs/centerpoint/README.md).
+
+```bash
+# 1. Create directory for checkpoints
+mkdir -p assets/ckpts
+
+# 2. Download and rename to full_centerpoint.pth
+wget https://download.openmmlab.com/mmdetection3d/v1.0.0_models/centerpoint/centerpoint_0075voxel_second_secfpn_dcn_circlenms_4x8_cyclic_20e_nus/centerpoint_0075voxel_second_secfpn_dcn_circlenms_4x8_cyclic_20e_nus_20220810_025930-657f67e0.pth -O assets/ckpts/full_centerpoint.pth
+```
+
 At this point, the UniData environment configuration is complete and contains all dependencies required to run the data processing modules. You can now proceed with pre-trained model preparation and data processing workflows.
