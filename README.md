@@ -1,134 +1,189 @@
-# UniData (Vectorized Autonomous Driving) 环境配置指南
+# UniData Environment Setup Guide
 
-**摘要**：本文旨在记录如何在 Linux 环境下（Ubuntu 22.04）复现 unidata 算法，并集成 ASAP 项目的数据处理模块（插帧功能）。鉴于 OpenMMLab 系列库（mmdet, mmseg, mmcv）与 CUDA、PyTorch 之间存在严格的版本依赖关系，且本环境需同时满足 VAD 的基础运行与 ASAP 的稀疏卷积需求，请务必严格按照以下步骤顺序执行，切勿擅自升级核心库版本。
+**Abstract**: This guide documents how to reproduce the UniData algorithm on a Linux environment (Ubuntu 22.04) and integrate the data processing module (frame interpolation) from the ASAP project. Given the strict version dependencies between OpenMMLab libraries (mmdet, mmseg, mmcv), CUDA, and PyTorch, and the need for this environment to support both the basic operation of VAD and the sparse convolution requirements of ASAP, please execute the following steps in strict order. **Do not upgrade core library versions arbitrarily.**
 
-**前置条件**：
-*   OS: Ubuntu 22.04/20.04 (推荐)
-*   GPU Driver: 适配 CUDA 11.1 的驱动版本
-*   Anaconda / Miniconda 已安装
+**Prerequisites**:
 
----
+  * **OS**: Ubuntu 22.04/20.04 (Recommended)
+  * **GPU Driver**: Version compatible with CUDA 11.1
+  * **Anaconda / Miniconda**: Installed
 
-### 第一步：创建并激活虚拟环境
+-----
 
-为了保证底层兼容性，选用 Python 3.8 版本。
+### Step 1: Create and Activate Virtual Environment
+
+To ensure low-level compatibility, use Python 3.8.
 
 ```bash
 conda create -n unidata python=3.8 -y
 conda activate unidata
 ```
 
-### 第二步：安装 PyTorch 与 CUDA 运行时
+### Step 2: Install PyTorch and CUDA Runtime
 
-需安装 PyTorch 1.9.1 配合 CUDA 11.1。
+Install PyTorch 1.9.1 with CUDA 11.1.
 
 ```bash
 pip install torch==1.9.1+cu111 torchvision==0.10.1+cu111 torchaudio==0.9.1 -f https://download.pytorch.org/whl/torch_stable.html
 ```
 
-### 第三步：安装 OpenMMLab 基础依赖库
+### Step 3: Install OpenMMLab Basic Dependencies
 
-UniData 项目严格锁定了 `mmcv-full`, `mmdet` 和 `mmsegmentation` 的版本。在安装具体库之前，首先安装 `openmim` 管理工具，尽管我们将手动指定版本以确保精确性。
+The UniData project strictly locks the versions of `mmcv-full`, `mmdet`, and `mmsegmentation`. Before installing specific libraries, install the `openmim` management tool, although we will specify versions manually to ensure precision.
 
-1.  **安装 OpenMIM**
+1.  **Install OpenMIM**
+
     ```bash
     pip install openmim
     ```
 
-2.  **安装 MMCV-Full**
-    注意：必须安装 1.4.0 版本。
+2.  **Install MMCV-Full**
+    **Note**: Must be version 1.4.0.
+
     ```bash
     pip install mmcv-full==1.4.0 -f https://download.openmmlab.com/mmcv/dist/cu111/torch1.9.1/index.html
     ```
 
-3.  **安装 MMDetection 与 MMSegmentation**
-    严禁升级这两个库，否则会导致 UniData 代码中的 API 调用失败。
+3.  **Install MMDetection and MMSegmentation**
+    **Strictly forbid** upgrading these two libraries, otherwise API calls in the UniData code will fail.
+
     ```bash
     pip install mmdet==2.14.0
     pip install mmsegmentation==0.14.1
     ```
 
-4.  **安装 Timm**
+4.  **Install Timm**
+
     ```bash
     pip install timm
     ```
 
-### 第四步：编译安装 MMDetection3D
+### Step 4: Compile and Install MMDetection3D
 
-为了便于调试和集成，我们将 `mmdetection3d` 作为源码编译安装在 UniData 项目目录下。
+To facilitate debugging and integration, we will compile and install `mmdetection3d` from source within the UniData project directory.
 
-1.  **克隆 UniData 仓库（若未克隆）及准备目录**
+1.  **Clone UniData repository (if not already cloned) and prepare directory**
+
     ```bash
-    # 假设当前在工作空间根目录
+    # Assuming you are in the workspace root
     git clone https://github.com/hustvl/UniData.git
     cd UniData
     ```
 
-2.  **克隆并编译 MMDetection3D v0.17.1**
-    注意：请确保 `mmdetection3d` 目录位于 `UniData` 根目录下。
+2.  **Clone and Compile MMDetection3D v0.17.1**
+    **Note**: Ensure the `mmdetection3d` directory is located inside the `UniData` root.
+
     ```bash
-    # 在 UniData 目录下执行
+    # Execute inside the UniData directory
     git clone https://github.com/open-mmlab/mmdetection3d.git
     cd mmdetection3d
     git checkout -f v0.17.1
-    
-    # 安装构建依赖（预防性安装）
+
+    # Install build dependencies (preventative measure)
     pip install setuptools==60.2.0 
-    
-    # 源码编译安装
+
+    # Install from source
     pip install -v -e .
     ```
 
-### 第五步：安装 ASAP 数据处理相关依赖
+### Step 5: Install ASAP Data Processing Dependencies
 
-为了在 UniData 环境中运行插帧代码，需要安装稀疏卷积库 `spconv`。针对 CUDA 11.1 环境，需选择以下特定版本：
+To run interpolation code in the UniData environment, the sparse convolution library `spconv` is required. For the CUDA 11.1 environment, select the specific version below:
 
 ```bash
 pip install spconv-cu111==2.1.25 cumm-cu111==0.2.9
 ```
 
-### 第六步：解决关键依赖冲突（重点）
+### Step 6: Resolve Key Dependency Conflicts (Crucial)
 
-在实际配置过程中，会遇到 `numpy` 版本导致的 `np.long` 报错以及 `requests` 库的版本冲突。请按以下方案修正。
+During configuration, you may encounter `np.long` errors caused by `numpy` versions and version conflicts with the `requests` library. Please correct them using the following solutions.
 
-#### 1. 修正 Numpy 版本（解决 AttributeError: module 'numpy' has no attribute 'long'）
-新版 Numpy（1.24+）移除了 `np.long` 类型，导致旧版 MMLab 代码报错。同时，直接使用 pip 降级可能会破坏 conda 的底层数学库连接（如 mkl/blas）。
+#### 1\. Fix Numpy Version (Solves `AttributeError: module 'numpy' has no attribute 'long'`)
 
-**解决方案**：使用 Conda 强制重装指定版本的 Numpy 及图像库。
+Newer versions of Numpy (1.24+) removed the `np.long` type, causing errors in older MMLab code. Additionally, directly downgrading via pip might break underlying Conda math library links (mkl/blas).
+
+**Solution**: Use Conda to forcibly reinstall the specified Numpy version and image libraries.
 
 ```bash
-# 这一步会同时修复 numpy 版本和找回可能丢失的底层库
+# This step fixes the numpy version and restores potential missing low-level libraries
 conda install numpy=1.19.5 pillow imageio -y
 ```
 
-#### 2. 修正 Requests 版本（解决 OpenXLab 依赖冲突）
-`openxlab` 需要旧版 `requests`，而 Jupyter 相关组件通常需要新版。在本项目中，优先保障代码运行环境。
+#### 2\. Fix Requests Version (Solves OpenXLab Dependency Conflict)
 
-**解决方案**：降级 requests。
+`openxlab` requires an older version of `requests`, while Jupyter components often need newer ones. In this project, prioritize the code execution environment.
+
+**Solution**: Downgrade requests.
 
 ```bash
 pip install requests==2.28.2
 ```
-*注：执行此命令后，若出现关于 `jupyterlab-server` 依赖冲突的红色报错，请直接忽略。只要终端显示 `Successfully installed requests-2.28.2` 即视为成功。该冲突不影响 UniData 和 ASAP 核心代码的运行。*
 
-### 第七步：安装其他必要工具
+*Note: After executing this command, if you see red error messages regarding `jupyterlab-server` dependency conflicts, please ignore them. As long as the terminal shows `Successfully installed requests-2.28.2`, it is considered successful. This conflict does not affect the core operation of UniData and ASAP.*
 
-安装 NuScenes 数据集开发工具包。
+### Step 7: Install Other Necessary Tools
+
+Install the NuScenes dataset development toolkit.
 
 ```bash
 pip install nuscenes-devkit==1.1.9
 ```
 
-### 第八步：验证环境
+### Step 8: Verify Environment
 
-完成上述步骤后，可使用 `pip list` 检查关键包版本是否符合预期：
+After completing the steps above, use `pip list` to check if key package versions meet expectations:
 
-*   `torch`: 1.9.1+cu111
-*   `mmcv-full`: 1.4.0
-*   `mmdet`: 2.14.0
-*   `mmsegmentation`: 0.14.1
-*   `mmdetection3d`: 0.17.1 (路径应指向 UniData/mmdetection3d)
-*   `numpy`: 1.19.5
-*   `spconv-cu111`: 2.1.25
+  * `torch`: 1.9.1+cu111
+  * `mmcv-full`: 1.4.0
+  * `mmdet`: 2.14.0
+  * `mmsegmentation`: 0.14.1
+  * `mmdetection3d`: 0.17.1 (Path should point to UniData/mmdetection3d)
+  * `numpy`: 1.19.5
+  * `spconv-cu111`: 2.1.25
 
-至此，UniData 环境配置完成，且已包含运行 ASAP 数据处理模块所需的所有依赖。可以开始进行预训练模型准备及数据处理流程。
+### Step 9: Create Data Symlink
+
+To avoid duplicating large amounts of data and consuming space, create a symbolic link named `data` in the project root directory pointing to your actual dataset directory.
+
+1.  **Ensure you are in the project root:**
+
+    ```bash
+    cd UniData
+    ```
+
+2.  **Execute the link command:**
+    Replace `<your_real_data_path>` with the absolute path where you actually store NuScenes and other data (e.g., `/mnt/EC0A5E060A5DCE68/Ubuntu22_04/data` or `/data/nuscenes_root`).
+
+    ```bash
+    # Syntax: ln -s <source_absolute_path> <target_link_name>
+    ln -s <your_real_data_path> data
+    ```
+
+    **Example** (Assuming your data is under `/mnt/disk1/datasets`):
+
+    ```bash
+    ln -s /mnt/disk1/datasets data
+    ```
+
+3.  **Verify if the link is successful:**
+    Run the following command. You should see `data` pointing to your real path (indicated by a blue arrow `->`):
+
+    ```bash
+    ls -l data
+    ```
+
+    *Expected output example:* `lrwxrwxrwx 1 kevin kevin ... data -> /mnt/disk1/datasets`
+
+    At this point, your logical directory structure should look like this:
+
+    ```text
+    UniData/
+    ├── mmdetection3d/
+    ├── tools/
+    ├── ...
+    └── data/  (Symlink) -> Points to your actual data drive
+        ├── nuscenes/
+        └── ...
+    ```
+
+At this point, the UniData environment configuration is complete and contains all dependencies required to run the data processing modules. You can now proceed with pre-trained model preparation and data processing workflows.
