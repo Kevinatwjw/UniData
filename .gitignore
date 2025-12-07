@@ -1,0 +1,43 @@
+
+# 忽略 Python 缓存
+
+__pycache__/
+
+*.py[cod]
+
+
+
+# 忽略大文件和权重
+
+*.pth
+
+*.pkl
+
+*.pt
+
+
+
+# 忽略数据集和工作目录
+
+data/
+
+work_dirs/
+
+out/
+
+logs/
+
+
+
+# 忽略 IDE 配置
+
+.vscode/
+
+.idea/
+
+
+
+# 忽略 macOS 系统文件 (如果队友用Mac)
+
+.DS_Store
+
