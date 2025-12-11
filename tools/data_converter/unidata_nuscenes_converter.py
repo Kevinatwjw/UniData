@@ -71,30 +71,34 @@ def generate_unidata_fields(scene_frames, global_start_idx):
     return processed_frames
 
 def transform_to_scene_format(infos):
+    """将扁平列表转换为 dict[scene_name] 结构并填充字段"""
     """将扁平列表转换为 dict[scene_token] 结构并填充字段"""
     print(f"正在处理 {len(infos)} 帧数据...")
     
     # 1. 分组
     scene_map = {}
     for info in infos:
-        s_token = info['scene_token']
-        if s_token not in scene_map:
-            scene_map[s_token] = []
-        scene_map[s_token].append(info)
+        # 注意：这里依赖于 _fill_trainval_infos 中加入了 scene_name
+        s_key = info['scene_name'] 
+        if s_key not in scene_map:
+            scene_map[s_key] = []
+        scene_map[s_key].append(info)
     
     # 2. 转换
     converted_scenes = {}
     global_frame_counter = 0
     
-    # 保持排序稳定性
-    for s_token in tqdm(scene_map, desc="Converting to Scene Format"):
-        raw_frames = scene_map[s_token]
+    # 保持排序稳定性 (按 scene_name 排序)
+    sorted_keys = sorted(scene_map.keys())
+    
+    for s_key in tqdm(sorted_keys, desc="Converting to Scene Format"):
+        raw_frames = scene_map[s_key]
         raw_frames.sort(key=lambda x: x['timestamp']) # 关键：按时间排序
         
         new_frames = generate_unidata_fields(raw_frames, global_frame_counter)
         global_frame_counter += len(new_frames)
         
-        converted_scenes[s_token] = new_frames
+        converted_scenes[s_key] = new_frames
         
     return converted_scenes
 
@@ -322,6 +326,8 @@ def _fill_trainval_infos(nusc,
         cat2idx[dic['name']] = idx
 
     for sample in mmcv.track_iter_progress(nusc.sample):
+        scene_rec = nusc.get('scene', sample['scene_token'])
+        scene_name = scene_rec['name']
         map_location = nusc.get('log', nusc.get('scene', sample['scene_token'])['log_token'])['location']
         lidar_token = sample['data']['LIDAR_TOP']
         sd_rec = nusc.get('sample_data', sample['data']['LIDAR_TOP'])
@@ -363,6 +369,7 @@ def _fill_trainval_infos(nusc,
             'sweeps': [],
             'cams': dict(),
             'scene_token': sample['scene_token'],  # temporal related info
+            'scene_name': scene_name,  # 加入 scene_name
             'lidar2ego_translation': cs_record['translation'],
             'lidar2ego_rotation': cs_record['rotation'],
             'ego2global_translation': pose_record['translation'],

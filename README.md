@@ -44,6 +44,16 @@ The UniData project strictly locks the versions of `mmcv-full`, `mmdet`, and `mm
     pip install mmcv-full==1.4.0 -f https://download.openmmlab.com/mmcv/dist/cu111/torch1.9.1/index.html
     ```
 
+    **Troubleshooting:**
+    If the installation process gets stuck at **"Building wheel for mmcv-full"**, it means `pip` failed to find a compatible pre-compiled binary and is attempting to compile from source (which is extremely slow and prone to errors).
+
+    **Solution:**
+    Press `Ctrl + C` to stop the current process. Instead of using pip directly, use `openmim` to automatically detect and install the correct version:
+
+    ```bash
+    mim install mmcv-full==1.4.0
+    ```
+
 3.  **Install MMDetection and MMSegmentation**
     **Strictly forbid** upgrading these two libraries, otherwise API calls in the UniData code will fail.
 
@@ -66,7 +76,7 @@ To facilitate debugging and integration, we will compile and install `mmdetectio
 
     ```bash
     # Assuming you are in the workspace root
-    git clone https://github.com/hustvl/UniData.git
+    git clone https://github.com/Kevinatwjw/UniData.git
     cd UniData
     ```
 

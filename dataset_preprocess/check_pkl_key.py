@@ -9,7 +9,7 @@ import pprint
 # =======================================================
 CONFIG = {
     # 1. 基础文件路径
-    'pkl_path': 'data/nuscenes_mmdet3d-12Hz/nuscenes_interp_12Hz_infos_val.pkl',
+    'pkl_path': 'data/nuscenes_interp_12Hz_infos_val.pkl',
     
     # 2. 功能开关
     'show_first_last_frame': True,  # 是否输出第一帧和最后一帧的原始内容
@@ -29,8 +29,11 @@ CONFIG = {
     # [关键修改] 指定要在 "详细输出" 中查看的字段
     # 写在这里的字段，会显示它的 类型(Type)、形状(Shape) 和 内容(Content)
     'dump_keys': [
-        'visibility'
+        'scene_token'
     ], 
+    # 是否开启深度表格化检查，打印每个字段的出现率/类型/shape/示例
+    'enable_deep_inspect': True,
+    'deep_inspect_top_n_samples': 1,  # 每个字段保存多少个示例值用于展示
 }
 
 # =======================================================
@@ -59,6 +62,83 @@ elif isinstance(data, list):
     all_frames = data
 
 print(f"[INFO] Total Frames: {len(all_frames)}")
+
+# ===================== 深度表格化检查 =====================
+def deep_inspect(frames, top_n_samples=1):
+    """遍历所有帧，统计每个字段的出现率、类型、shape 与示例，并以表格形式输出"""
+    from collections import defaultdict
+
+    total = len(frames)
+    stats = defaultdict(lambda: {'count': 0, 'types': set(), 'shapes': set(), 'samples': []})
+
+    for frame in frames:
+        for k, v in frame.items():
+            stat = stats[k]
+            stat['count'] += 1
+            tname = type(v).__name__
+            stat['types'].add(tname)
+
+            # 计算 shape
+            shape_str = 'N/A'
+            try:
+                if hasattr(v, 'shape'):
+                    shape_str = str(getattr(v, 'shape'))
+                elif isinstance(v, (list, tuple)):
+                    # 列表内元素可能是 ndarray 或标量
+                    if len(v) == 0:
+                        shape_str = '(0,)'
+                    else:
+                        first = v[0]
+                        if hasattr(first, 'shape'):
+                            shape_str = f'List[{len(v)}]x{first.shape}'
+                        else:
+                            import numpy as _np
+                            try:
+                                shape_str = str(_np.array(v).shape)
+                            except Exception:
+                                shape_str = f'List(len={len(v)})'
+                else:
+                    shape_str = 'scalar'
+            except Exception:
+                shape_str = 'N/A'
+
+            stat['shapes'].add(shape_str)
+
+            # 保存示例值（最多 top_n_samples）
+            if len(stat['samples']) < top_n_samples:
+                stat['samples'].append(v)
+
+    # 输出表格头
+    keys_sorted = sorted(stats.items(), key=lambda x: x[1]['count'], reverse=True)
+
+    print('\n' + '='*120)
+    print('Deep Inspect Results: Field | Occurrence% | Types | Shapes | Example')
+    print('='*120)
+    fmt = '{:<30} {:>10} {:<25} {:<25} {:<40}'
+    print(fmt.format('Field', 'Occ%', 'Types', 'Shapes', 'Example (truncated)'))
+    print('-'*120)
+
+    for k, s in keys_sorted:
+        occ = s['count'] / total * 100 if total > 0 else 0
+        types_str = '/'.join(sorted(list(s['types']))[:3])
+        shapes_str = ' | '.join(list(s['shapes'])[:2])
+        sample_repr = ''
+        if len(s['samples']) > 0:
+            try:
+                sample_repr = repr(s['samples'][0])
+            except Exception:
+                sample_repr = str(type(s['samples'][0]))
+        if len(sample_repr) > 200:
+            sample_repr = sample_repr[:197] + '...'
+
+        print(fmt.format(k[:30], f"{occ:6.2f}%", types_str[:25], shapes_str[:25], sample_repr[:40]))
+
+    print('='*120 + '\n')
+
+
+# 如果配置开启则运行深度检查
+if CONFIG.get('enable_deep_inspect', False) and len(all_frames) > 0:
+    deep_inspect(all_frames, top_n_samples=CONFIG.get('deep_inspect_top_n_samples', 1))
 
 # =======================================================
 # 功能函数定义
