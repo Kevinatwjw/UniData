@@ -9,7 +9,7 @@ import pprint
 # =======================================================
 CONFIG = {
     # 1. 基础文件路径
-    'pkl_path': 'data/nuscenes_interp_12Hz_infos_val.pkl',
+    'pkl_path': 'data/nuscenes_infos_val_temporal_v3_scene.pkl',
     
     # 2. 功能开关
     'show_first_last_frame': True,  # 是否输出第一帧和最后一帧的原始内容
@@ -29,7 +29,7 @@ CONFIG = {
     # [关键修改] 指定要在 "详细输出" 中查看的字段
     # 写在这里的字段，会显示它的 类型(Type)、形状(Shape) 和 内容(Content)
     'dump_keys': [
-        'scene_token'
+        'sweeps'
     ], 
     # 是否开启深度表格化检查，打印每个字段的出现率/类型/shape/示例
     'enable_deep_inspect': True,

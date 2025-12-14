@@ -1,0 +1,33 @@
+# 实验名称
+experiment_name: "UniData_Format_Conversion"
+
+# 转换模式设置
+# 选项: 
+#   "dense_to_sparse": 从稠密网格(.npz)转换到稀疏列表(.npy)
+#   "sparse_to_dense": 从稀疏列表(.npy)还原到稠密网格(.npz)
+mode: "dense_to_sparse"
+
+# 路径配置
+io:
+  input_path: "./data/labels.npz"         # 输入文件路径
+  output_path: "./output/converted_labels.npy"  # 输出文件路径
+
+# 数据参数配置
+data_params:
+  # 稠密网格的尺寸 [x, y, z]
+  grid_size: [200, 200, 16]
+  
+  # 在 .npz 文件中存储数据的键名 (例如 'semantics', 'arr_0', 'labels')
+  # 如果不确定，脚本会尝试读取第一个数组
+  npz_key: "semantics"
+  
+  # "空气"或"空白"的标签ID
+  # 在 dense_to_sparse 时，该ID会被忽略以节省空间
+  # 在 sparse_to_dense 时，该ID用于填充背景
+  empty_label: 17
+
+# 日志配置
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  save_log: true
+  log_path: "./output/conversion.log"

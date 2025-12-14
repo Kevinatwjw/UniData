@@ -41,19 +41,6 @@ def _set_global_scene_indices(frame, global_start, global_end):
     frame['scene_start'] = global_start
     frame['scene_end'] = global_end
 
-# def _set_temporal_neighbors(frame, current_idx, num_frames):
-#     """
-#     工具函数：构建时序邻居列表 (nice_neighbor_prev/nice_neighbor_next)。
-#     用于 unidata 的时序融合模块。
-#     """
-#     # 前向邻居 (倒序，离自己最近的在前面)
-#     # 例如当前是 2，结果为 [1, 0]
-#     frame['nice_neighbor_prev'] = [idx for idx in range(current_idx - 1, -1, -1)]
-    
-#     # 后向邻居
-#     # 例如当前是 2，总数是 5，结果为 [3, 4]
-#     frame['nice_neighbor_next'] = [idx for idx in range(current_idx + 1, num_frames)]
-
 def generate_unidata_fields(scene_frames, global_start_idx):
     """核心逻辑：计算 prev/next 和全局索引"""
     num_frames = len(scene_frames)
@@ -130,15 +117,22 @@ def _extract_description(nusc, sample):
 def _extract_timeofday(nusc, sample):
     """
     单独提取场景采集时间 (timeofday)。
-    注意：经分析，此字段实质为 Log 级的 date_captured，用于作为 12Hz 数据的分组依据。
-    Args:
-        nusc: NuScenes 实例
-        sample: 当前 sample 记录
-    Returns:
-        str: 采集时间字符串 (e.g., '2018-08-02...')
+    修改策略：优先从 logfile 字段提取完整的时间戳字符串，以保证 Mini 和 Trainval 格式一致。
     """
     scene_rec = nusc.get('scene', sample['scene_token'])
     log_rec = nusc.get('log', scene_rec['log_token'])
+    
+    # 1. 获取 logfile 名称 
+    # 格式通常为: "n008-2018-08-01-15-16-36-0400" (车辆ID-时间戳)
+    logfile = log_rec['logfile']
+    
+    # 2. 如果包含连字符，说明是标准格式，分割出时间部分
+    if '-' in logfile:
+        # split('-', 1) 表示只分割第一个连字符
+        # [0] 是车辆ID (n008), [1] 是后面所有内容 (2018-08-01-15-16-36-0400)
+        return logfile.split('-', 1)[1]
+        
+    # 3. 如果格式不符合预期，回退到原逻辑
     return log_rec['date_captured']
 
 def _extract_is_key_frame(sd_rec):
@@ -189,6 +183,31 @@ def locate_message(utimes, utime):
         i -= 1
     return i
 
+def get_scene_frame_lists(nusc, allowed_scene_tokens):
+    """
+    生成官方格式的 scene_tokens 结构：List[List[frame_token]]
+    即：外层列表代表场景，内层列表代表该场景下的所有帧(按时间顺序)。
+    """
+    scene_frame_lists = []
+    
+    # 遍历所有场景
+    for scene in nusc.scene:
+        # 只处理当前 split (train 或 val) 中的场景
+        if scene['token'] not in allowed_scene_tokens:
+            continue
+            
+        frames = []
+        # 从该场景的第一帧开始，顺藤摸瓜遍历整个场景
+        curr_token = scene['first_sample_token']
+        while curr_token != '':
+            frames.append(curr_token)
+            # 获取下一帧 token
+            curr_sample = nusc.get('sample', curr_token)
+            curr_token = curr_sample['next']
+            
+        scene_frame_lists.append(frames)
+        
+    return scene_frame_lists
 
 def create_nuscenes_infos(root_path,
                           out_path,
@@ -276,21 +295,22 @@ def create_nuscenes_infos(root_path,
 
     metadata = dict(version=version)
     # 获取所有 scene token 列表 (12Hz 格式标准要求 Top-level 包含此字段)
-    scene_tokens = [s['token'] for s in nusc.scene]
+    # scene_tokens = [s['token'] for s in nusc.scene]
 
     print('\n[12Hz Only] Processing and Saving 12Hz Data...')
 
     if test:
         print('test sample: {}'.format(len(train_nusc_infos)))
-        
+        # [新增] 生成测试集的分组列表
+        test_scene_tokens = get_scene_frame_lists(nusc, train_scenes)
         # 1. 保存扁平 List 格式 (用于 Check 或其他用途)
         # [MODIFIED] 构造符合官方格式的字典 (Top-level keys: infos, metadata, scene_tokens)
         data_test_list = dict(
             infos=train_nusc_infos, 
             metadata=metadata, 
-            scene_tokens=scene_tokens
+            scene_tokens=test_scene_tokens
         )
-        info_path = osp.join(out_path, '{}_interp_12Hz_infos_test.pkl'.format(info_prefix))
+        info_path = osp.join(out_path, '{}_advanced_12Hz_infos_test.pkl'.format(info_prefix))
         mmcv.dump(data_test_list, info_path)
         
         # [MODIFIED] 注释掉 Scene 格式转换，只保留原始 list 格式
@@ -310,13 +330,15 @@ def create_nuscenes_infos(root_path,
             len(train_nusc_infos), len(val_nusc_infos)))
         
         # ==================== 处理 Train ====================
+        # [新增] 生成训练集的分组列表
+        train_scene_tokens_list = get_scene_frame_lists(nusc, train_scenes)
         # 1. 保存扁平 List 格式
         data_train_list = dict(
             infos=train_nusc_infos, 
             metadata=metadata, 
-            scene_tokens=scene_tokens
+            scene_tokens=train_scene_tokens_list
         )
-        train_path = osp.join(out_path, '{}_interp_12Hz_infos_train.pkl'.format(info_prefix))
+        train_path = osp.join(out_path, '{}_advanced_12Hz_infos_train.pkl'.format(info_prefix))
         mmcv.dump(data_train_list, train_path)
         
         # [MODIFIED] 注释掉 Scene 格式转换
@@ -332,13 +354,15 @@ def create_nuscenes_infos(root_path,
         # mmcv.dump(data_train_scene, train_scene_path)
 
         # ==================== 处理 Val ====================
+        # [新增] 生成验证集的分组列表
+        val_scene_tokens_list = get_scene_frame_lists(nusc, val_scenes)
         # 1. 保存扁平 List 格式
         data_val_list = dict(
             infos=val_nusc_infos, 
             metadata=metadata, 
-            scene_tokens=scene_tokens
+            scene_tokens=val_scene_tokens_list
         )
-        val_path = osp.join(out_path, '{}_interp_12Hz_infos_val.pkl'.format(info_prefix))
+        val_path = osp.join(out_path, '{}_advanced_12Hz_infos_val.pkl'.format(info_prefix))
         mmcv.dump(data_val_list, val_path)
         
         # # [MODIFIED] 注释掉 Scene 格式转换
@@ -553,7 +577,10 @@ def _fill_trainval_infos(nusc,
             cam_path, _, cam_intrinsic = nusc.get_sample_data(cam_token)
             cam_info = obtain_sensor2top(nusc, cam_token, l2e_t, l2e_r_mat,
                                          e2g_t, e2g_r_mat, cam)
-            cam_info.update(cam_intrinsic=cam_intrinsic)
+            # 【关键修改】统一使用官方标准键名 "camera_intrinsics"，避免后续 KeyError
+            # cam_info.update(cam_intrinsic=cam_intrinsic)
+            cam_info.update(camera_intrinsics=cam_intrinsic)
+            
             info['cams'].update({cam: cam_info})
 
         # [MODIFIED] 注释掉 sweeps 填充循环 (目标 sweeps 始终为空)
@@ -1281,9 +1308,9 @@ if __name__ == '__main__':
 
 """
 python tools/data_converter/unidata_nuscenes_12Hz_converter.py nuscenes \
-    --root-path ./data/nuscenes/advanced_12Hz_full_mini \
+    --root-path ./data/nuscenes/v1.0-mini_12Hz \
     --canbus ./data/nuscenes \
-    --out-dir ./data/nuscenes_mmdet3d-12Hz \
+    --out-dir ./data \
     --extra-tag nuscenes_mini \
     --version v1.0-mini
 

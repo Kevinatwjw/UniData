@@ -104,6 +104,89 @@ def transform_to_scene_format(infos):
 
 # ================= 【新增 unidata 格式转换工具函数 END】 =================
 
+# ================= 【新增 12Hz 字段提取工具函数 START】 =================
+
+def _extract_location(nusc, sample):
+    """
+    单独提取场景地点 (location)。
+    Args:
+        nusc: NuScenes 实例
+        sample: 当前 sample 记录
+    Returns:
+        str: 地点名称 (e.g., 'singapore-onenorth')
+    """
+    scene_rec = nusc.get('scene', sample['scene_token'])
+    log_rec = nusc.get('log', scene_rec['log_token'])
+    return log_rec['location']
+
+def _extract_description(nusc, sample):
+    """
+    单独提取场景描述 (description)。
+    Args:
+        nusc: NuScenes 实例
+        sample: 当前 sample 记录
+    Returns:
+        str: 场景描述文本
+    """
+    scene_rec = nusc.get('scene', sample['scene_token'])
+    return scene_rec['description']
+
+def _extract_timeofday(nusc, sample):
+    """
+    单独提取场景采集时间 (timeofday)。
+    修改策略：优先从 logfile 字段提取完整的时间戳字符串，以保证 Mini 和 Trainval 格式一致。
+    """
+    scene_rec = nusc.get('scene', sample['scene_token'])
+    log_rec = nusc.get('log', scene_rec['log_token'])
+    
+    # 1. 获取 logfile 名称 
+    # 格式通常为: "n008-2018-08-01-15-16-36-0400" (车辆ID-时间戳)
+    logfile = log_rec['logfile']
+    
+    # 2. 如果包含连字符，说明是标准格式，分割出时间部分
+    if '-' in logfile:
+        # split('-', 1) 表示只分割第一个连字符
+        # [0] 是车辆ID (n008), [1] 是后面所有内容 (2018-08-01-15-16-36-0400)
+        return logfile.split('-', 1)[1]
+        
+    # 3. 如果格式不符合预期，回退到原逻辑
+    return log_rec['date_captured']
+
+def _extract_is_key_frame(sd_rec):
+    """
+    单独提取是否为关键帧标识 (is_key_frame)。
+    Args:
+        sd_rec: sample_data 记录 (LIDAR_TOP)
+    Returns:
+        bool: True 或 False
+    """
+    return sd_rec['is_key_frame']
+
+def _extract_visibility(annotations):
+    """
+    单独提取可见性 (visibility)。
+    Args:
+        annotations: 当前帧的所有标注列表
+    Returns:
+        np.ndarray: 可见性等级数组 (int32)
+    """
+    visibilities = [int(anno['visibility_token']) for anno in annotations]
+    return np.array(visibilities).astype(np.int32)
+
+def extract_all_meta_fields(nusc, sample, sd_rec):
+    """
+    [聚合函数] 调用上述原子函数，一次性获取所有元数据。
+    保持主循环代码简洁。
+    """
+    return {
+        'location': _extract_location(nusc, sample),
+        'description': _extract_description(nusc, sample),
+        'timeofday': _extract_timeofday(nusc, sample),
+        'is_key_frame': _extract_is_key_frame(sd_rec)
+    }
+
+# ================= 【新增 12Hz 字段提取工具函数 END】 =================
+
 def quart_to_rpy(qua):
     x, y, z, w = qua
     roll = math.atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y))

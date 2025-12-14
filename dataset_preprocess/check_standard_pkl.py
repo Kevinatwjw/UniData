@@ -8,7 +8,7 @@ from collections import defaultdict
 import sys
 
 # ============================== 修改这里 ==============================
-PKL_PATH = "data/nuscenes_mini_interp_12Hz_infos_val.pkl"   # ← 改成你的路径
+PKL_PATH = "data/nuscenes_infos_val_temporal_v3_scene.pkl"   # ← 改成你的路径
 # =====================================================================
 
 print(f"正在加载官方 PKL 文件: {PKL_PATH}")
@@ -141,7 +141,6 @@ for path, info in sorted(stats.items(), key=lambda x: x[1]['count'], reverse=Tru
 
 print('='*140)
 
-print('\n完成。若需将 scene id 注入到每帧以便兼容旧代码，请告诉我是否在内存中注入（不改文件）。')
 
 # # ====================== Step 3: 重点字段详细展开 ======================
 # print("\n\n重点字段详细解析（你最关心的几个）".center(100, "="))
