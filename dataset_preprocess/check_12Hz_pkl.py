@@ -205,4 +205,5 @@ python dataset_preprocess/check_12Hz_pkl.py data/nuscenes_mmdet3d-12Hz/nuscenes_
 python dataset_preprocess/check_12Hz_pkl.py data/nuscenes_mmdet3d-12Hz/nuscenes_mini_advanced_12Hz_infos_val.pkl
 python dataset_preprocess/check_12Hz_pkl.py data/nuscenes_mini_infos_temporal_val_scene.pkl
 python dataset_preprocess/check_12Hz_pkl.py data/infos/nuscenes_mini_infos_temporal_val_scene_converted.pkl
+python dataset_preprocess/check_12Hz_pkl.py data/annos/video_pickle_data.pkl
 """
