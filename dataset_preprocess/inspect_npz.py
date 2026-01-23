@@ -1,13 +1,33 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+NPY/NPZ文件检查和分析工具
+
+支持：
+- 标准NPZ文件（压缩数组）
+- 标准NPY文件（单个数组）
+- Pickle封装的NPY文件（稀疏数据）
+- 可视化功能（2D/3D点云、切片）
+
+用法示例：
+  python dataset_preprocess/inspect_npz.py data/labels.npz
+  python dataset_preprocess/inspect_npz.py data/points.npy --visualize --slice-z 3
+  python dataset_preprocess/inspect_npz.py data/sparse.npy --visualize --view 3d
+"""
+
 import numpy as np
 import argparse
 import os
 import pickle
 import sys
+from typing import Optional, Tuple, Any, Dict, List
 
 # ==========================================
 # 1. 全局配置 (Config)
 # ==========================================
 class InspectConfig:
+    """配置类"""
+    
     def __init__(self):
         # --- 基础显示设置 ---
         self.show_data = True         # 是否打印具体数据内容（前N个）
@@ -17,11 +37,17 @@ class InspectConfig:
         
         # --- 阈值与参数 ---
         self.preview_rows = 10        # 打印数据时显示的行数
-        self.max_unique_print = 30    # 唯一值显示数量上限 (稍微调大了一点以便显示更多类别)
+        self.max_unique_print = 30    # 唯一值显示数量上限
         self.empty_val = 17           # 视为空/背景的值（用于计算稀疏度，NuScenes通常是0或17）
         
         # --- 智能容错 ---
         self.try_pickle_if_fail = True # 如果 np.load 失败，尝试用 pickle 加载（针对 generate_occ.py）
+        
+        # --- 可视化设置 ---
+        self.enable_visualize = False  # 是否启用可视化
+        self.visualize_mode = '2d'    # 可视化模式: '2d', '3d', 'slice'
+        self.slice_z = None            # 切片Z值（用于2D可视化）
+        self.slice_axis = 2             # 切片轴（0=X, 1=Y, 2=Z）
 
 # 初始化全局配置
 cfg = InspectConfig()
@@ -101,12 +127,148 @@ def analyze_array(name, arr, indent=0):
             print(f"{prefix}  - 非空占比 (!= {cfg.empty_val}): {ratio:.2f}% ({non_empty}/{total_elements})")
 
     print("-" * 50)
+    
+    return arr  # 返回数组以便后续可视化
+
+# ==========================================
+# 2.5. 可视化功能
+# ==========================================
+
+def visualize_array(name: str, arr: np.ndarray, mode: str = '2d', 
+                   slice_z: Optional[int] = None, slice_axis: int = 2) -> None:
+    """
+    可视化数组数据
+    
+    Args:
+        name: 数组名称
+        arr: 数组数据
+        mode: 可视化模式 ('2d', '3d', 'slice')
+        slice_z: 切片值（用于2D可视化）
+        slice_axis: 切片轴（0=X, 1=Y, 2=Z）
+    """
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print("[WARNING] matplotlib未安装，跳过可视化")
+        return
+    
+    print(f"\n[可视化] 正在生成 {name} 的可视化...")
+    
+    # 处理点云数据 (N, >=3) 或 (N, >=4)
+    if arr.ndim == 2 and arr.shape[1] >= 3:
+        coords = arr[:, :3]  # 取前3列作为坐标
+        labels = arr[:, -1] if arr.shape[1] >= 4 else None
+        
+        if mode == '2d' or mode == 'slice':
+            # 2D散点图（XY平面）
+            plt.figure(figsize=(10, 10))
+            if labels is not None:
+                # 根据标签着色
+                scatter = plt.scatter(coords[:, 0], coords[:, 1], c=labels, 
+                                     s=1, cmap='tab20', alpha=0.6)
+                plt.colorbar(scatter, label='Label')
+            else:
+                plt.scatter(coords[:, 0], coords[:, 1], s=1, alpha=0.6)
+            plt.xlabel('X')
+            plt.ylabel('Y')
+            plt.title(f'{name} - XY平面投影')
+            plt.axis('equal')
+            plt.grid(True, alpha=0.3)
+            plt.tight_layout()
+            plt.show()
+        
+        elif mode == '3d':
+            # 3D散点图
+            fig = plt.figure(figsize=(12, 10))
+            ax = fig.add_subplot(111, projection='3d')
+            if labels is not None:
+                scatter = ax.scatter(coords[:, 0], coords[:, 1], coords[:, 2], 
+                                   c=labels, s=1, cmap='tab20', alpha=0.6)
+                plt.colorbar(scatter, label='Label')
+            else:
+                ax.scatter(coords[:, 0], coords[:, 1], coords[:, 2], s=1, alpha=0.6)
+            ax.set_xlabel('X')
+            ax.set_ylabel('Y')
+            ax.set_zlabel('Z')
+            ax.set_title(f'{name} - 3D点云')
+            plt.tight_layout()
+            plt.show()
+    
+    # 处理3D体素数据 (H, W, D) 或 (H, W, D, C)
+    elif arr.ndim == 3 or (arr.ndim == 4 and arr.shape[3] == 1):
+        if arr.ndim == 4:
+            arr = arr[:, :, :, 0]  # 取第一个通道
+        
+        if mode == 'slice' and slice_z is not None:
+            # 切片可视化
+            if slice_axis == 0:
+                slice_data = arr[slice_z, :, :]
+                axis_labels = ('Y', 'Z')
+            elif slice_axis == 1:
+                slice_data = arr[:, slice_z, :]
+                axis_labels = ('X', 'Z')
+            else:  # slice_axis == 2
+                slice_data = arr[:, :, slice_z]
+                axis_labels = ('X', 'Y')
+            
+            plt.figure(figsize=(10, 10))
+            plt.imshow(slice_data, cmap='viridis', origin='lower')
+            plt.colorbar(label='Value')
+            plt.xlabel(axis_labels[0])
+            plt.ylabel(axis_labels[1])
+            plt.title(f'{name} - 切片 (axis={slice_axis}, index={slice_z})')
+            plt.tight_layout()
+            plt.show()
+        else:
+            # 默认显示中间切片
+            mid_z = arr.shape[2] // 2
+            plt.figure(figsize=(10, 10))
+            plt.imshow(arr[:, :, mid_z], cmap='viridis', origin='lower')
+            plt.colorbar(label='Value')
+            plt.xlabel('X')
+            plt.ylabel('Y')
+            plt.title(f'{name} - 中间切片 (Z={mid_z})')
+            plt.tight_layout()
+            plt.show()
+    
+    # 处理2D图像数据 (H, W) 或 (H, W, C)
+    elif arr.ndim == 2 or (arr.ndim == 3 and arr.shape[2] <= 3):
+        if arr.ndim == 3:
+            if arr.shape[2] == 1:
+                arr = arr[:, :, 0]
+            elif arr.shape[2] == 3:
+                # RGB图像
+                plt.figure(figsize=(10, 10))
+                plt.imshow(arr, origin='lower')
+                plt.title(f'{name} - RGB图像')
+                plt.axis('off')
+                plt.tight_layout()
+                plt.show()
+                return
+        
+        plt.figure(figsize=(10, 10))
+        plt.imshow(arr, cmap='viridis', origin='lower')
+        plt.colorbar(label='Value')
+        plt.xlabel('X')
+        plt.ylabel('Y')
+        plt.title(f'{name} - 2D数据')
+        plt.tight_layout()
+        plt.show()
+    
+    else:
+        print(f"[WARNING] 不支持的数据维度: {arr.shape}，跳过可视化")
 
 # ==========================================
 # 3. 智能加载逻辑
 # ==========================================
 
-def smart_load_and_inspect(file_path):
+def smart_load_and_inspect(file_path: str) -> None:
+    """
+    智能加载并分析文件
+    
+    Args:
+        file_path: 文件路径
+    """
     if not os.path.exists(file_path):
         print(f"Error: 文件不存在 - {file_path}")
         return
@@ -115,8 +277,9 @@ def smart_load_and_inspect(file_path):
     print(f"\n====== 智能分析: {file_name} ======")
     print(f"完整路径: {file_path}")
 
-    raw_data = None
+    raw_data: Any = None
     is_pickle = False
+    arrays_to_visualize: List[Tuple[str, np.ndarray]] = []
 
     # --- 尝试加载 ---
     try:
@@ -126,7 +289,9 @@ def smart_load_and_inspect(file_path):
             print(f"包含 Keys: {list(raw_data.files)}")
             print("-" * 50)
             for key in raw_data.files:
-                analyze_array(key, raw_data[key])
+                arr = analyze_array(key, raw_data[key])
+                if arr is not None and cfg.enable_visualize:
+                    arrays_to_visualize.append((key, arr))
 
         elif file_path.endswith('.npy'):
             # 特殊处理：先尝试当做标准 NPY 加载
@@ -140,7 +305,9 @@ def smart_load_and_inspect(file_path):
                     is_pickle = True
                 else:
                     print("识别格式: Standard NPY (Array)")
-                    analyze_array("Content", raw_data)
+                    arr = analyze_array("Content", raw_data)
+                    if arr is not None and cfg.enable_visualize:
+                        arrays_to_visualize.append(("Content", arr))
             except Exception as e:
                 if cfg.try_pickle_if_fail:
                     print("Warn: 标准 NPY 加载失败，尝试作为 Pickle 加载...")
@@ -157,14 +324,26 @@ def smart_load_and_inspect(file_path):
                     print(f"字典 Keys: {list(raw_data.keys())}")
                     for k, v in raw_data.items():
                         if isinstance(v, np.ndarray):
-                            analyze_array(k, v, indent=2)
+                            arr = analyze_array(k, v, indent=2)
+                            if arr is not None and cfg.enable_visualize:
+                                arrays_to_visualize.append((k, arr))
                         else:
                             print(f"  Key '{k}': {type(v)}")
                 elif isinstance(raw_data, np.ndarray):
-                    analyze_array("Pickle_Array", raw_data)
+                    arr = analyze_array("Pickle_Array", raw_data)
+                    if arr is not None and cfg.enable_visualize:
+                        arrays_to_visualize.append(("Pickle_Array", arr))
                 elif isinstance(raw_data, list):
                     print(f"  数据类型: List (长度 {len(raw_data)})")
                     print(f"  前项示例: {raw_data[0] if len(raw_data)>0 else 'Empty'}")
+                    # 如果是点云列表，尝试转换为数组
+                    if len(raw_data) > 0 and isinstance(raw_data[0], (list, tuple, np.ndarray)):
+                        try:
+                            arr = np.array(raw_data)
+                            if arr.ndim == 2 and cfg.enable_visualize:
+                                arrays_to_visualize.append(("List_Array", arr))
+                        except Exception:
+                            pass
                 else:
                     print(f"  数据类型: {type(raw_data)}")
 
@@ -173,42 +352,83 @@ def smart_load_and_inspect(file_path):
             with open(file_path, 'rb') as f:
                 data = pickle.load(f)
             print(f"加载成功，数据类型: {type(data)}")
+            if isinstance(data, np.ndarray) and cfg.enable_visualize:
+                arrays_to_visualize.append(("Pickle_Data", data))
 
     except Exception as e:
         print(f"\n[FATAL ERROR] 无法读取文件: {e}")
         import traceback
         traceback.print_exc()
+        return
+    
+    # 执行可视化
+    if cfg.enable_visualize and arrays_to_visualize:
+        for name, arr in arrays_to_visualize:
+            visualize_array(name, arr, mode=cfg.visualize_mode, 
+                          slice_z=cfg.slice_z, slice_axis=cfg.slice_axis)
 
 # ==========================================
 # 4. 主入口
 # ==========================================
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="智能 .npy/.npz/.pkl 文件分析工具")
+    parser = argparse.ArgumentParser(
+        description="智能 .npy/.npz/.pkl 文件分析工具",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+示例用法:
+  # 基础分析
+  python inspect_npz.py data/labels.npz
+  
+  # 带可视化（2D点云）
+  python inspect_npz.py data/points.npy --visualize
+  
+  # 3D可视化
+  python inspect_npz.py data/points.npy --visualize --view 3d
+  
+  # 切片可视化
+  python inspect_npz.py data/voxels.npz --visualize --slice-z 5
+        """
+    )
     parser.add_argument("path", type=str, help="文件路径")
     
     # --- 命令行参数覆盖 Config ---
     parser.add_argument("--no_stats", action="store_true", help="关闭数值统计")
     parser.add_argument("--no_unique", action="store_true", help="关闭唯一值统计")
     parser.add_argument("--empty_val", type=int, default=17, help="指定什么值被视为空 (默认17)")
-    parser.add_argument("--preview", type=int, default=5, help="预览行数")
+    parser.add_argument("--preview", type=int, default=10, help="预览行数")
+    parser.add_argument("--visualize", action="store_true", help="启用可视化")
+    parser.add_argument("--view", type=str, choices=['2d', '3d', 'slice'], default='2d',
+                       help="可视化模式: 2d=2D投影, 3d=3D点云, slice=切片")
+    parser.add_argument("--slice-z", type=int, default=None, 
+                       help="切片Z值（用于slice模式）")
+    parser.add_argument("--slice-axis", type=int, choices=[0, 1, 2], default=2,
+                       help="切片轴: 0=X, 1=Y, 2=Z")
 
     args = parser.parse_args()
 
     # 应用命令行参数到 Config
-    if args.no_stats: cfg.show_stats = False
-    if args.no_unique: cfg.show_unique = False
+    if args.no_stats:
+        cfg.show_stats = False
+    if args.no_unique:
+        cfg.show_unique = False
     cfg.empty_val = args.empty_val
     cfg.preview_rows = args.preview
+    cfg.enable_visualize = args.visualize
+    cfg.visualize_mode = args.view
+    cfg.slice_z = args.slice_z
+    cfg.slice_axis = args.slice_axis
 
     smart_load_and_inspect(args.path)
 
 
 """
 分析标准的 Dense NPZ (如 labels.npz):
-python ./dataset_preprocess/inspect_npz.py data/results/occupancy/eval_results_mini_800_800_12Hz/0bb62a68055249e381b039bf54b0ccf83.npz
+python ./dataset_preprocess/inspect_npz.py data/results/occupancy/eval_results_mini_200_200_12Hz/val/0a0d6b8c2e884134a3b48df43d54c36a.npz
+python ./dataset_preprocess/inspect_npz.py data/gts/scene-0003/1ac0914c98b8488cb3521efeba354496/labels.npz
 输出预期：会显示 Shape为(200,200,16)，包含语义标签的分布。
 分析 generate_occ.py 生成的 Sparse NPY (实为 Pickle):
-python ./dataset_preprocess/inspect_npz.py data/GT_occupancy_mini_12Hz_800_800/dense_voxels_with_semantic/0af0feb5b1394b928dd13d648de898f5/c71884fb34d046258c12cf018513d8cc.npy
+python ./dataset_preprocess/inspect_npz.py data/results/video/render_maps/val/0a0d6b8c2e884134a3b48df43d54c36a1/semantic.npz
+python ./dataset_preprocess/inspect_npz.py data/results/video/render_maps/val/0a0d6b8c2e884134a3b48df43d54c36a1/depth_data.npz
 输出预期：会提示 "识别格式: Pickle Wrapped inside NPY"，然后显示 Shape为(N, 4) 的坐标列表。
 """

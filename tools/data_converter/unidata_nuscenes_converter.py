@@ -16,6 +16,7 @@ from mmdet3d.datasets import NuScenesDataset
 from nuscenes.utils.geometry_utils import view_points
 from mmdet3d.core.bbox.box_np_ops import points_cam2img
 from nuscenes.utils.geometry_utils import transform_matrix
+from nuscenes_weather_daytime_extractor import compute_scene_labels
 
 
 nus_categories = ('car', 'truck', 'trailer', 'bus', 'construction_vehicle',
@@ -441,6 +442,9 @@ def _fill_trainval_infos(nusc,
                 test_sample = nusc.get('sample', test_sample['next'])
             else:
                 fut_valid_flag = False
+        # 额外提取场景级元信息（与 12Hz 转换脚本保持一致）
+        meta_fields = extract_all_meta_fields(nusc, sample, sd_rec)
+
         ##
         info = {
             'lidar_path': lidar_path,
@@ -459,8 +463,19 @@ def _fill_trainval_infos(nusc,
             'ego2global_rotation': pose_record['rotation'],
             'timestamp': sample['timestamp'],
             'fut_valid_flag': fut_valid_flag,
-            'map_location': map_location
+            # 原有 map_location（保持兼容）
+            'map_location': map_location,
+            # 新增统一的元信息字段（与 12Hz 保持一致）
+            'location': meta_fields['location'],
+            'description': meta_fields['description'],
+            'timeofday': meta_fields['timeofday'],
+            'is_key_frame': meta_fields['is_key_frame'],
         }
+
+        # 基于 description/location/timeofday 计算场景级标签（逐帧写入，场景内值相同）
+        weather, daytime = compute_scene_labels(info)
+        info['weather'] = weather
+        info['daytime'] = daytime
 
         if sample['next'] == '':
             frame_idx = 0
@@ -1204,7 +1219,7 @@ if __name__ == '__main__':
 python tools/data_converter/unidata_nuscenes_converter.py nuscenes \
     --root-path ./data/nuscenes \
     --canbus ./data/nuscenes \
-    --out-dir ./data/nuscenes_mmdet3d-12Hz \
+    --out-dir ./data \
     --extra-tag nuscenes_mini \
     --version v1.0-mini
 """

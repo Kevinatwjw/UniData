@@ -54,12 +54,17 @@ python setup.py develop
 pip install nuscenes-devkit==1.1.9
 ```
 
-**h. Clone VAD.**
+**h. Install astral + pytz.**
+```shell
+pip install astral pytz
+```
+
+**i. Clone VAD.**
 ```shell
 git clone https://github.com/hustvl/VAD.git
 ```
 
-**i. Prepare pretrained models.**
+**j. Prepare pretrained models.**
 ```shell
 cd /path/to/VAD
 mkdir ckpts

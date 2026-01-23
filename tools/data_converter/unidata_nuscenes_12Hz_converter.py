@@ -16,6 +16,7 @@ from mmdet3d.datasets import NuScenesDataset
 from nuscenes.utils.geometry_utils import view_points
 from mmdet3d.core.bbox.box_np_ops import points_cam2img
 from nuscenes.utils.geometry_utils import transform_matrix
+from nuscenes_weather_daytime_extractor import compute_scene_labels
 
 
 nus_categories = ('car', 'truck', 'trailer', 'bus', 'construction_vehicle',
@@ -477,6 +478,7 @@ def _fill_trainval_infos(nusc,
         cat2idx[dic['name']] = idx
 
     for sample in mmcv.track_iter_progress(nusc.sample):
+        scene_rec = nusc.get('scene', sample['scene_token'])
         map_location = nusc.get('log', nusc.get('scene', sample['scene_token'])['log_token'])['location']
         lidar_token = sample['data']['LIDAR_TOP']
         sd_rec = nusc.get('sample_data', sample['data']['LIDAR_TOP'])
@@ -503,8 +505,9 @@ def _fill_trainval_infos(nusc,
         # can_bus = _get_can_bus_info(nusc, nusc_can_bus, sample)
 
         # =============== 【修改部分 START: 调用提取函数】 ===============
-        # 调用工具函数提取 location, timeofday, is_key_frame 等
+        # 调用工具函数提取 location, description, timeofday, is_key_frame 等
         meta_fields = extract_all_meta_fields(nusc, sample, sd_rec)
+        scene_name = scene_rec['name']
         # ==============================================================
         
         # [MODIFIED] 注释掉 unidata 的未来帧检测，12Hz info 只需要当前帧信息
@@ -543,12 +546,18 @@ def _fill_trainval_infos(nusc,
             # 'map_location': map_location,
 
             # =============== 【修改部分 START: 注入新字段】 ===============
-            'location': meta_fields['location'],     # 新增 location
+            'location': meta_fields['location'],  # 新增 location
             'description': meta_fields['description'],
             'timeofday': meta_fields['timeofday'],
-            'is_key_frame': meta_fields['is_key_frame']
+            'is_key_frame': meta_fields['is_key_frame'],
+            'scene_name': scene_name,
             # ==========================================================
         }
+
+        # 基于 description/location/timeofday 计算场景级标签（逐帧写入，场景内值相同）
+        weather, daytime = compute_scene_labels(info)
+        info['weather'] = weather
+        info['daytime'] = daytime
 
         # [MODIFIED] 注释掉 frame_idx 的递增逻辑
         # if sample['next'] == '':
